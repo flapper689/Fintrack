@@ -952,18 +952,44 @@
                 if (!response.ok) { console.error("AI Categorization failed:", await response.text()); continue; }
                 const result = await response.json();
                 if (!result.candidates || !result.candidates[0].content.parts[0].text) { console.warn(`AI response for batch ${i+1} was malformed. Skipping.`); continue; }
-                const aiCategoriesForBatch = JSON.parse(result.candidates[0].content.parts[0].text);
-
-                if (aiCategoriesForBatch.length !== batch.length) { console.warn(`Mismatch in batch ${i+1}: AI returned ${aiCategoriesForBatch.length} categories for ${batch.length} transactions.`); }
-
-                batch.forEach((tx, index) => {
-                    const cats = aiCategoriesForBatch[index];
-                    if (cats && cats.type && cats.category) {
-                        tx.type = cats.type; tx.category = cats.category; tx.subCategory = cats.subCategory || '';
-                    } else {
-                        console.warn(`AI failed to provide a valid category for item at index ${index} in batch ${i+1}. Description: "${tx.description}"`);
+                let aiCategoriesForBatch;
+                try {
+                    aiCategoriesForBatch = JSON.parse(result.candidates[0].content.parts[0].text);
+                } catch (e) {
+                    // Try to fix common JSON issues (e.g., trailing commas)
+                    let text = result.candidates[0].content.parts[0].text;
+                    text = text.replace(/,\s*([\]\}])/g, '$1'); // Remove trailing commas
+                    try {
+                        aiCategoriesForBatch = JSON.parse(text);
+                    } catch (e2) {
+                        console.warn(`AI response for batch ${i+1} could not be parsed as JSON. Skipping batch.`);
+                        continue;
                     }
-                });
+                }
+
+                // Patch: Ensure output array is always the same length as input batch
+                if (!Array.isArray(aiCategoriesForBatch)) {
+                    console.warn(`AI response for batch ${i+1} is not an array. Skipping batch.`);
+                    continue;
+                }
+                if (aiCategoriesForBatch.length !== batch.length) {
+                    console.warn(`Mismatch in batch ${i+1}: AI returned ${aiCategoriesForBatch.length} categories for ${batch.length} transactions.`);
+                }
+                // Fill missing entries with Uncategorized
+                for (let j = 0; j < batch.length; j++) {
+                    const cats = aiCategoriesForBatch[j];
+                    if (cats && cats.type && cats.category) {
+                        batch[j].type = cats.type; batch[j].category = cats.category; batch[j].subCategory = cats.subCategory || '';
+                    } else {
+                        // If missing or invalid, set as Uncategorized
+                        batch[j].type = 'Uncategorized';
+                        batch[j].category = 'Uncategorized';
+                        batch[j].subCategory = '';
+                        if (cats !== undefined) {
+                            console.warn(`AI failed to provide a valid category for item at index ${j} in batch ${i+1}. Description: "${batch[j].description}"`);
+                        }
+                    }
+                }
             }
             return transactions;
         }
@@ -1006,14 +1032,26 @@
             if (!result.candidates || !result.candidates[0].content.parts[0].text) {
                 throw new Error('AI consolidation response was malformed or empty.');
             }
-            const responseText = result.candidates[0].content.parts[0].text;
-            const startIndex = responseText.indexOf('{');
-            const endIndex = responseText.lastIndexOf('}');
-            if (startIndex === -1 || endIndex === -1) {
-                throw new Error('Could not find a valid JSON object in the AI response for consolidation.');
+            let responseText = result.candidates[0].content.parts[0].text;
+            // Patch: Try to extract and fix JSON
+            let jsonString = '';
+            let mapping;
+            try {
+                // Try to extract the first valid JSON object
+                const startIndex = responseText.indexOf('{');
+                const endIndex = responseText.lastIndexOf('}');
+                if (startIndex === -1 || endIndex === -1) {
+                    throw new Error('Could not find a valid JSON object in the AI response for consolidation.');
+                }
+                jsonString = responseText.substring(startIndex, endIndex + 1);
+                // Remove trailing commas
+                jsonString = jsonString.replace(/,\s*([\]\}])/g, '$1');
+                ({ mapping } = JSON.parse(jsonString));
+            } catch (e) {
+                alert('An error occurred while parsing the AI response for consolidation. Please try again or reduce the number of categories.');
+                console.error('AI consolidation JSON parse error:', e, '\nRaw response:', responseText);
+                throw e;
             }
-            const jsonString = responseText.substring(startIndex, endIndex + 1);
-            const { mapping } = JSON.parse(jsonString);
             return mapping;
         }
 
@@ -1419,15 +1457,25 @@
                 if (!result.candidates || !result.candidates[0].content.parts[0].text) {
                     throw new Error('AI response was malformed or empty.');
                 }
-                const responseText = result.candidates[0].content.parts[0].text;
-                const startIndex = responseText.indexOf('{');
-                const endIndex = responseText.lastIndexOf('}');
-                if (startIndex === -1 || endIndex === -1) {
-                    throw new Error('Could not find a valid JSON object in the AI response for consolidation.');
+                let responseText = result.candidates[0].content.parts[0].text;
+                // Patch: Try to extract and fix JSON
+                let jsonString = '';
+                let mapping;
+                try {
+                    const startIndex = responseText.indexOf('{');
+                    const endIndex = responseText.lastIndexOf('}');
+                    if (startIndex === -1 || endIndex === -1) {
+                        throw new Error('Could not find a valid JSON object in the AI response for consolidation.');
+                    }
+                    jsonString = responseText.substring(startIndex, endIndex + 1);
+                    jsonString = jsonString.replace(/,\s*([\]\}])/g, '$1');
+                    ({ mapping } = JSON.parse(jsonString));
+                } catch (e) {
+                    alert('An error occurred while parsing the AI response for consolidation. Please try again or reduce the number of categories.');
+                    console.error('AI consolidation JSON parse error:', e, '\nRaw response:', responseText);
+                    aiProgressModal.classList.add('hidden');
+                    return;
                 }
-                const jsonString = responseText.substring(startIndex, endIndex + 1);
-
-                const { mapping } = JSON.parse(jsonString);
 
                 aiStatusMessage.textContent = 'Applying new categories...';
                 
