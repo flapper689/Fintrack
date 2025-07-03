@@ -1046,6 +1046,16 @@
                 jsonString = responseText.substring(startIndex, endIndex + 1);
                 // Remove trailing commas
                 jsonString = jsonString.replace(/,\s*([\]\}])/g, '$1');
+                // Check for truncated JSON (missing closing brackets)
+                const openBrackets = (jsonString.match(/\[/g) || []).length;
+                const closeBrackets = (jsonString.match(/\]/g) || []).length;
+                const openBraces = (jsonString.match(/\{/g) || []).length;
+                const closeBraces = (jsonString.match(/\}/g) || []).length;
+                if (openBrackets !== closeBrackets || openBraces !== closeBraces) {
+                    alert('The AI response was incomplete or cut off. Please reduce the number of categories or try again.');
+                    console.error('AI consolidation JSON appears truncated. Raw response:', responseText);
+                    throw new Error('Truncated JSON from AI.');
+                }
                 ({ mapping } = JSON.parse(jsonString));
             } catch (e) {
                 alert('An error occurred while parsing the AI response for consolidation. Please try again or reduce the number of categories.');
@@ -1469,6 +1479,17 @@
                     }
                     jsonString = responseText.substring(startIndex, endIndex + 1);
                     jsonString = jsonString.replace(/,\s*([\]\}])/g, '$1');
+                    // Check for truncated JSON (missing closing brackets)
+                    const openBrackets = (jsonString.match(/\[/g) || []).length;
+                    const closeBrackets = (jsonString.match(/\]/g) || []).length;
+                    const openBraces = (jsonString.match(/\{/g) || []).length;
+                    const closeBraces = (jsonString.match(/\}/g) || []).length;
+                    if (openBrackets !== closeBrackets || openBraces !== closeBraces) {
+                        alert('The AI response was incomplete or cut off. Please reduce the number of categories or try again.');
+                        console.error('AI consolidation JSON appears truncated. Raw response:', responseText);
+                        aiProgressModal.classList.add('hidden');
+                        return;
+                    }
                     ({ mapping } = JSON.parse(jsonString));
                 } catch (e) {
                     alert('An error occurred while parsing the AI response for consolidation. Please try again or reduce the number of categories.');
