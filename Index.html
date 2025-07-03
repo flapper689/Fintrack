@@ -934,7 +934,7 @@
         }
 
         async function categorizeWithAI(transactions, apiKey) {
-            const BATCH_SIZE = 100;
+            const BATCH_SIZE = 25;
             const totalBatches = Math.ceil(transactions.length / BATCH_SIZE);
             
             for (let i = 0; i < totalBatches; i++) {
