@@ -362,6 +362,13 @@
                             </div>
                         </div>
                         <div id="category-status" class="text-sm mt-2"></div>
+                        <!-- Export/Import Buttons -->
+                        <div class="mt-6 flex flex-wrap gap-2">
+                            <button id="export-categories-csv-btn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">Export Categories (CSV)</button>
+                            <button id="export-categories-json-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">Export Categories (JSON)</button>
+                            <input type="file" id="import-categories-csv-input" accept=".csv" class="hidden">
+                            <button id="import-categories-csv-btn" class="bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700">Import Categories (CSV)</button>
+                        </div>
                     </div>
                     <div class="bg-white p-6 rounded-lg shadow-md">
                         <div class="flex justify-between items-center mb-4">
@@ -592,6 +599,11 @@
         const dashboardFilterCategory = document.getElementById('dashboard-filter-category');
         const dashboardFilterSubcategory = document.getElementById('dashboard-filter-subcategory');
         const compareYearCheckbox = document.getElementById('compare-year-checkbox');
+        // Add after DOM element references:
+        const exportCategoriesCsvBtn = document.getElementById('export-categories-csv-btn');
+        const exportCategoriesJsonBtn = document.getElementById('export-categories-json-btn');
+        const importCategoriesCsvBtn = document.getElementById('import-categories-csv-btn');
+        const importCategoriesCsvInput = document.getElementById('import-categories-csv-input');
 
         // --- Data Persistence ---
         function saveDataToLocal() {
@@ -723,6 +735,11 @@
         cancelImportOptionsBtn.addEventListener('click', () => importOptionsModal.classList.add('hidden'));
         importWithAiBtn.addEventListener('click', () => processWithAI(importContext.pausedMapping));
         importWithRulesBtn.addEventListener('click', () => processStandardImport(importContext.pausedMapping));
+        // Export/Import Buttons
+        exportCategoriesCsvBtn.addEventListener('click', exportCategoriesAsCSV);
+        exportCategoriesJsonBtn.addEventListener('click', exportCategoriesAsJSON);
+        importCategoriesCsvBtn.addEventListener('click', () => importCategoriesCsvInput.click());
+        importCategoriesCsvInput.addEventListener('change', handleImportCategoriesCSV);
 
         // --- Core Application Logic ---
 
@@ -2089,6 +2106,85 @@
                     link.classList.remove('text-gray-600', 'hover:bg-gray-200');
                 }
             });
+        }
+
+        function exportCategoriesAsCSV() {
+            let rows = [['Type', 'Category', 'SubCategory']];
+            for (const type in categoryHierarchy) {
+                for (const category in categoryHierarchy[type]) {
+                    if (categoryHierarchy[type][category].length === 0) {
+                        rows.push([type, category, '']);
+                    } else {
+                        for (const sub of categoryHierarchy[type][category]) {
+                            rows.push([type, category, sub]);
+                        }
+                    }
+                }
+            }
+            const csvContent = rows.map(r => r.map(x => '"' + (x || '') + '"').join(',')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'FinTrack_Categories.csv';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function exportCategoriesAsJSON() {
+            const jsonStr = JSON.stringify(categoryHierarchy, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'FinTrack_Categories.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function handleImportCategoriesCSV(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const lines = text.split(/\r?\n/).filter(l => l.trim());
+                if (lines.length < 2) {
+                    setCategoryStatus('CSV file is empty or invalid.', 'red');
+                    return;
+                }
+                const [header, ...data] = lines;
+                const cols = header.split(',').map(h => h.replace(/"/g, '').trim().toLowerCase());
+                const typeIdx = cols.indexOf('type');
+                const catIdx = cols.indexOf('category');
+                const subIdx = cols.indexOf('subcategory');
+                if (typeIdx === -1 || catIdx === -1 || subIdx === -1) {
+                    setCategoryStatus('CSV must have Type, Category, and SubCategory columns.', 'red');
+                    return;
+                }
+                const newHierarchy = {};
+                data.forEach(row => {
+                    const vals = row.split(',').map(x => x.replace(/"/g, '').trim());
+                    const type = vals[typeIdx];
+                    const category = vals[catIdx];
+                    const sub = vals[subIdx];
+                    if (!type || !category) return;
+                    if (!newHierarchy[type]) newHierarchy[type] = {};
+                    if (!newHierarchy[type][category]) newHierarchy[type][category] = [];
+                    if (sub && !newHierarchy[type][category].includes(sub)) newHierarchy[type][category].push(sub);
+                });
+                categoryHierarchy = newHierarchy;
+                saveDataToLocal();
+                populateAllDropdowns();
+                renderCategories();
+                setCategoryStatus('Categories imported successfully!', 'green');
+            };
+            reader.readAsText(file);
+            event.target.value = null;
         }
     </script>
 </body>
