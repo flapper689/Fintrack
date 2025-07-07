@@ -613,7 +613,14 @@
                 localStorage.setItem('fintrack_transactions', JSON.stringify(transactionsDB));
                 localStorage.setItem('fintrack_categories', JSON.stringify(categoryHierarchy));
                 localStorage.setItem('fintrack_rules', JSON.stringify(rulesDB));
-            } catch (e) { console.error("Error saving data to localStorage:", e); alert("Could not save data."); }
+            } catch (e) {
+                console.error("Error saving data to localStorage:", e);
+                if (e && e.name === 'QuotaExceededError') {
+                    alert("Could not save data: Local storage quota exceeded. Please export and clear some data.");
+                } else {
+                    alert("Could not save data. See console for details.");
+                }
+            }
         }
 
         function loadDataFromLocal() {
@@ -881,16 +888,24 @@
             // applyConsolidation(consolidationMap);
 
             aiStatusMessage.textContent = 'Step 3/3: Finalizing import...';
-            generateNewRules(categorized);
-
-            transactionsDB.push(...newTransactions);
-            newTransactions.forEach(tx => existingTransactionKeys.add(tx.id));
-
-            saveDataToLocal();
-            renderAll();
-            aiProgressModal.classList.add('hidden');
-            importStatus.textContent = `Import complete! ${newTransactions.length} new txns added. ${autoCategorizedCount} matched by existing rules. ${duplicateCount} duplicates ignored.`;
-            importStatus.className = 'text-sm font-medium text-green-600';
+            // Show spinner and allow UI to update
+            setTimeout(() => {
+                try {
+                    generateNewRules(categorized);
+                    transactionsDB.push(...newTransactions);
+                    newTransactions.forEach(tx => existingTransactionKeys.add(tx.id));
+                    saveDataToLocal();
+                    renderAll();
+                    aiProgressModal.classList.add('hidden');
+                    importStatus.textContent = `Import complete! ${newTransactions.length} new txns added. ${autoCategorizedCount} matched by existing rules. ${duplicateCount} duplicates ignored.`;
+                    importStatus.className = 'text-sm font-medium text-green-600';
+                } catch (e) {
+                    aiProgressModal.classList.add('hidden');
+                    importStatus.textContent = 'An error occurred during finalizing import. See console for details.';
+                    importStatus.className = 'text-sm font-medium text-red-600';
+                    console.error('Error during finalizing import:', e);
+                }
+            }, 100); // Allow spinner to show
         }
 
         function parseNewTransactions(mapping) {
@@ -1117,15 +1132,22 @@
         }
 
         function generateNewRules(categorizedTransactions) {
+            // Optimize: Only add rules for unique keywords not already present
             const existingKeywords = new Set(rulesDB.map(r => r.keyword.toLowerCase()));
-            categorizedTransactions.forEach(tx => {
-                if (tx.type === 'Uncategorized') return;
+            const newRuleMap = new Map();
+            for (const tx of categorizedTransactions) {
+                if (tx.type === 'Uncategorized') continue;
                 const keyword = extractKeyword(tx.description);
-                if (keyword && !existingKeywords.has(keyword.toLowerCase())) {
-                    rulesDB.push({ keyword, type: tx.type, category: tx.category, subCategory: tx.subCategory || '' });
-                    existingKeywords.add(keyword.toLowerCase());
+                if (!keyword) continue;
+                const keyLower = keyword.toLowerCase();
+                if (!existingKeywords.has(keyLower) && !newRuleMap.has(keyLower)) {
+                    newRuleMap.set(keyLower, { keyword, type: tx.type, category: tx.category, subCategory: tx.subCategory || '' });
                 }
-            });
+            }
+            for (const rule of newRuleMap.values()) {
+                rulesDB.push(rule);
+                existingKeywords.add(rule.keyword.toLowerCase());
+            }
         }
         
         function processStandardImport(mapping) {
@@ -1204,7 +1226,7 @@
             });
             tableHTML += `</tbody></table></div>`;
             transactionsContainer.innerHTML = tableHTML;
-            renderPaginationControls(totalPages, currentlyFilteredTransactions.length);
+            renderPaginationControls(totalPages, currentlyDisplayedTransactions.length);
         }
 
         function renderPaginationControls(totalPages, totalItems) {
