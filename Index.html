@@ -897,8 +897,18 @@
                     saveDataToLocal();
                     renderAll();
                     aiProgressModal.classList.add('hidden');
-                    importStatus.textContent = `Import complete! ${newTransactions.length} new txns added. ${autoCategorizedCount} matched by existing rules. ${duplicateCount} duplicates ignored.`;
-                    importStatus.className = 'text-sm font-medium text-green-600';
+                    // Check if all transactions are still uncategorized
+                    const uncategorizedCount = transactionsDB.filter(tx => !tx.type || tx.type === 'Uncategorized' || !tx.category || tx.category === 'Uncategorized').length;
+                    const allUncategorized = uncategorizedCount === transactionsDB.length;
+                    const categoryCount = Object.keys(categoryHierarchy).length;
+                    let warningMsg = '';
+                    if (allUncategorized) {
+                        warningMsg = 'Warning: All transactions remain uncategorized after import. This may indicate an issue with the AI categorization step or your API key.';
+                    } else if (rulesDB.length > 0 && categoryCount === 0) {
+                        warningMsg = 'Warning: Rules were created but no categories were generated. Please check your AI output and category import format.';
+                    }
+                    importStatus.textContent = `Import complete! ${newTransactions.length} new txns added. ${autoCategorizedCount} matched by existing rules. ${duplicateCount} duplicates ignored.` + (warningMsg ? `\n${warningMsg}` : '');
+                    importStatus.className = 'text-sm font-medium ' + (warningMsg ? 'text-yellow-600' : 'text-green-600');
                 } catch (e) {
                     aiProgressModal.classList.add('hidden');
                     importStatus.textContent = 'An error occurred during finalizing import. See console for details.';
@@ -1000,6 +1010,9 @@
                         continue;
                     }
                 }
+
+                // --- LOGGING: Show AI output for this batch ---
+                console.log(`AI response for batch ${i+1}:`, aiCategoriesForBatch);
 
                 // Patch: Ensure output array is always the same length as input batch
                 if (!Array.isArray(aiCategoriesForBatch)) {
