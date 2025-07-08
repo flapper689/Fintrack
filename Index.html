@@ -894,6 +894,17 @@
                     generateNewRules(categorized);
                     transactionsDB.push(...newTransactions);
                     newTransactions.forEach(tx => existingTransactionKeys.add(tx.id));
+                    // --- Build categoryHierarchy from all transactions ---
+                    const newHierarchy = {};
+                    transactionsDB.forEach(tx => {
+                        if (!tx.type || tx.type === 'Uncategorized' || !tx.category || tx.category === 'Uncategorized') return;
+                        if (!newHierarchy[tx.type]) newHierarchy[tx.type] = {};
+                        if (!newHierarchy[tx.type][tx.category]) newHierarchy[tx.type][tx.category] = [];
+                        if (tx.subCategory && !newHierarchy[tx.type][tx.category].includes(tx.subCategory)) {
+                            newHierarchy[tx.type][tx.category].push(tx.subCategory);
+                        }
+                    });
+                    categoryHierarchy = newHierarchy;
                     saveDataToLocal();
                     renderAll();
                     aiProgressModal.classList.add('hidden');
