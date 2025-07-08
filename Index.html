@@ -370,6 +370,8 @@
                             <button id="export-categories-json-btn" class="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">Export Categories (JSON)</button>
                             <input type="file" id="import-categories-csv-input" accept=".csv" class="hidden">
                             <button id="import-categories-csv-btn" class="bg-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-purple-700">Import Categories (CSV)</button>
+                            <input type="file" id="import-category-mapping-json-input" accept=".json" class="hidden">
+                            <button id="import-category-mapping-json-btn" class="bg-orange-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-orange-700">Import Category Mapping (JSON)</button>
                         </div>
                     </div>
                     <div class="bg-white p-6 rounded-lg shadow-md">
@@ -606,6 +608,8 @@
         const exportCategoriesJsonBtn = document.getElementById('export-categories-json-btn');
         const importCategoriesCsvBtn = document.getElementById('import-categories-csv-btn');
         const importCategoriesCsvInput = document.getElementById('import-categories-csv-input');
+        const importCategoryMappingJsonBtn = document.getElementById('import-category-mapping-json-btn');
+        const importCategoryMappingJsonInput = document.getElementById('import-category-mapping-json-input');
 
         // --- Data Persistence ---
         function saveDataToLocal() {
@@ -749,6 +753,8 @@
         exportCategoriesJsonBtn.addEventListener('click', exportCategoriesAsJSON);
         importCategoriesCsvBtn.addEventListener('click', () => importCategoriesCsvInput.click());
         importCategoriesCsvInput.addEventListener('change', handleImportCategoriesCSV);
+        importCategoryMappingJsonBtn.addEventListener('click', () => importCategoryMappingJsonInput.click());
+        importCategoryMappingJsonInput.addEventListener('change', handleImportCategoryMappingJSON);
 
         // --- Core Application Logic ---
 
@@ -2230,6 +2236,67 @@
                 populateAllDropdowns();
                 renderCategories();
                 setCategoryStatus('Categories imported successfully!', 'green');
+            };
+            reader.readAsText(file);
+            event.target.value = null;
+        }
+
+        function handleImportCategoryMappingJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const mappingObj = JSON.parse(e.target.result);
+                    if (!mappingObj || !Array.isArray(mappingObj.mapping)) {
+                        setCategoryStatus('Invalid mapping JSON: missing mapping array.', 'red');
+                        return;
+                    }
+                    // 1. Update transactions
+                    transactionsDB.forEach(tx => {
+                        const match = mappingObj.mapping.find(m =>
+                            m.old.type === tx.type &&
+                            m.old.category === tx.category &&
+                            (m.old.subCategory || '') === (tx.subCategory || '')
+                        );
+                        if (match) {
+                            tx.type = match.new.type;
+                            tx.category = match.new.category;
+                            tx.subCategory = match.new.subCategory || '';
+                        }
+                    });
+                    // 2. Update rules
+                    rulesDB.forEach(rule => {
+                        const match = mappingObj.mapping.find(m =>
+                            m.old.type === rule.type &&
+                            m.old.category === rule.category &&
+                            (m.old.subCategory || '') === (rule.subCategory || '')
+                        );
+                        if (match) {
+                            rule.type = match.new.type;
+                            rule.category = match.new.category;
+                            rule.subCategory = match.new.subCategory || '';
+                        }
+                    });
+                    // 3. Build new categoryHierarchy from mapping
+                    const newHierarchy = {};
+                    mappingObj.mapping.forEach(m => {
+                        const { type, category, subCategory } = m.new;
+                        if (!newHierarchy[type]) newHierarchy[type] = {};
+                        if (!newHierarchy[type][category]) newHierarchy[type][category] = [];
+                        if (subCategory && !newHierarchy[type][category].includes(subCategory)) {
+                            newHierarchy[type][category].push(subCategory);
+                        }
+                    });
+                    categoryHierarchy = newHierarchy;
+                    saveDataToLocal();
+                    populateAllDropdowns();
+                    renderCategories();
+                    setCategoryStatus('Category mapping applied successfully!', 'green');
+                } catch (err) {
+                    setCategoryStatus('Error parsing mapping JSON. See console.', 'red');
+                    console.error('Error parsing mapping JSON:', err);
+                }
             };
             reader.readAsText(file);
             event.target.value = null;
