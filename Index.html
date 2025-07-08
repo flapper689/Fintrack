@@ -610,6 +610,9 @@
         const importCategoriesCsvInput = document.getElementById('import-categories-csv-input');
         const importCategoryMappingJsonBtn = document.getElementById('import-category-mapping-json-btn');
         const importCategoryMappingJsonInput = document.getElementById('import-category-mapping-json-input');
+        // Add after DOM element references:
+        const ruleSearchKeywordInput = document.getElementById('rule-search-keyword');
+        const ruleFilterCategorySelect = document.getElementById('rule-filter-category');
 
         // --- Data Persistence ---
         function saveDataToLocal() {
@@ -755,6 +758,9 @@
         importCategoriesCsvInput.addEventListener('change', handleImportCategoriesCSV);
         importCategoryMappingJsonBtn.addEventListener('click', () => importCategoryMappingJsonInput.click());
         importCategoryMappingJsonInput.addEventListener('change', handleImportCategoryMappingJSON);
+        // Add event listeners:
+        ruleSearchKeywordInput.addEventListener('input', renderRulesTable);
+        ruleFilterCategorySelect.addEventListener('change', renderRulesTable);
 
         // --- Core Application Logic ---
 
@@ -1214,12 +1220,14 @@
                 const type = filterTypeSelect.value;
                 const category = filterCategorySelect.value;
                 const subcategory = filterSubCategorySelect.value;
+                const keyword = document.getElementById('filter-keyword').value.trim().toLowerCase();
 
                 if (startDate) transactionsToRender = transactionsToRender.filter(tx => tx.date >= startDate);
                 if (endDate) transactionsToRender = transactionsToRender.filter(tx => tx.date <= endDate);
                 if (type) transactionsToRender = transactionsToRender.filter(tx => tx.type === type);
                 if (category) transactionsToRender = transactionsToRender.filter(tx => tx.category === category);
                 if (subcategory) transactionsToRender = transactionsToRender.filter(tx => tx.subCategory === subcategory);
+                if (keyword) transactionsToRender = transactionsToRender.filter(tx => tx.description && tx.description.toLowerCase().includes(keyword));
             }
             
             currentlyDisplayedTransactions = transactionsToRender.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -1766,13 +1774,26 @@
         function handleDeleteRule(index) { rulesDB.splice(index, 1); renderRulesTable(); saveDataToLocal(); }
 
         function renderRulesTable() {
-            rulesCount.textContent = `(${rulesDB.length} total)`;
-            if (rulesDB.length === 0) { rulesListContainer.innerHTML = `<p class="text-gray-500 text-center p-10">No rules created yet.</p>`; return; }
+            // Get filter values
+            const keyword = ruleSearchKeywordInput.value.trim().toLowerCase();
+            const filterCat = ruleFilterCategorySelect.value;
+            // Build unique category list for dropdown
+            const allCategories = Array.from(new Set(rulesDB.map(r => r.category))).sort();
+            ruleFilterCategorySelect.innerHTML = '<option value="">All Categories</option>' + allCategories.map(c => `<option value="${c}">${c}</option>`).join('');
+            if (filterCat) ruleFilterCategorySelect.value = filterCat;
+            // Filter rules
+            let filteredRules = rulesDB;
+            if (keyword) filteredRules = filteredRules.filter(r => r.keyword.toLowerCase().includes(keyword));
+            if (filterCat) filteredRules = filteredRules.filter(r => r.category === filterCat);
+            rulesCount.textContent = `(${filteredRules.length} total)`;
+            if (filteredRules.length === 0) { rulesListContainer.innerHTML = `<p class="text-gray-500 text-center p-10">No rules match the current filters.</p>`; return; }
             let tableHTML = `<table class="min-w-full data-table"><thead class="border-b"><tr><th class="font-semibold text-sm text-gray-600 uppercase tracking-wider">Keyword</th><th class="font-semibold text-sm text-gray-600 uppercase tracking-wider">Categorization</th><th class="font-semibold text-sm text-gray-600 uppercase tracking-wider"></th></tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
-            rulesDB.sort((a,b) => a.keyword.localeCompare(b.keyword));
-            rulesDB.forEach((rule, index) => {
+            filteredRules.sort((a,b) => a.keyword.localeCompare(b.keyword));
+            filteredRules.forEach((rule, index) => {
                 const fullCategory = `${rule.type} > ${rule.category}` + (rule.subCategory ? ` > ${rule.subCategory}`: '');
-                tableHTML += `<tr><td class="text-sm font-medium text-gray-900">${rule.keyword}</td><td class="text-sm text-gray-500">${fullCategory}</td><td class="text-right"><button onclick="handleDeleteRule(${index})" class="text-red-500 hover:text-red-700"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button></td></tr>`;
+                // Find the rule's index in rulesDB for delete
+                const ruleIdx = rulesDB.findIndex(r => r.keyword === rule.keyword && r.type === rule.type && r.category === rule.category && r.subCategory === rule.subCategory);
+                tableHTML += `<tr><td class="text-sm font-medium text-gray-900">${rule.keyword}</td><td class="text-sm text-gray-500">${fullCategory}</td><td class="text-right"><button onclick="handleDeleteRule(${ruleIdx})" class="text-red-500 hover:text-red-700"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button></td></tr>`;
             });
             tableHTML += `</tbody></table>`; rulesListContainer.innerHTML = tableHTML;
         }
