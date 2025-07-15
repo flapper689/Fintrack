@@ -636,6 +636,7 @@ Ensure the entire output is a single, valid JSON object.</textarea>
         const ruleSearchKeywordInput = document.getElementById('rule-search-keyword');
         const ruleFilterCategorySelect = document.getElementById('rule-filter-category');
         const exportBackupBtn = document.getElementById('export-backup-btn');
+        const backupImporter = document.getElementById('backup-importer');
 
         // --- Data Persistence ---
         function saveDataToLocal() {
@@ -800,6 +801,35 @@ Ensure the entire output is a single, valid JSON object.</textarea>
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
+        });
+        backupImporter.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const backup = JSON.parse(e.target.result);
+                    if (backup.transactions && Array.isArray(backup.transactions)) {
+                        transactionsDB = backup.transactions;
+                        existingTransactionKeys = new Set(transactionsDB.map(tx => tx.id));
+                    }
+                    if (backup.categories && typeof backup.categories === 'object') {
+                        categoryHierarchy = backup.categories;
+                    }
+                    if (backup.rules && Array.isArray(backup.rules)) {
+                        rulesDB = backup.rules;
+                    }
+                    saveDataToLocal();
+                    populateAllDropdowns();
+                    renderAll();
+                    setCategoryStatus('Backup imported successfully!', 'green');
+                } catch (err) {
+                    setCategoryStatus('Error importing backup. See console.', 'red');
+                    console.error('Error importing backup:', err);
+                }
+            };
+            reader.readAsText(file);
+            event.target.value = null;
         });
 
         // --- Core Application Logic ---
