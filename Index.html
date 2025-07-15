@@ -2363,19 +2363,37 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                     
                     // 5. Re-apply rules to all transactions to ensure proper categorization
                     let reCategorizedCount = 0;
+                    let unmatchedCount = 0;
+                    
                     transactionsDB.forEach(tx => {
                         const originalType = tx.type;
                         const originalCategory = tx.category;
                         const originalSubCategory = tx.subCategory;
                         
-                        // Apply rules to this transaction
+                        // Find the best matching rule (most specific/longest keyword)
+                        let bestRule = null;
+                        let bestMatchLength = 0;
+                        
                         for (const rule of rulesDB) {
                             if (tx.description.toLowerCase().includes(rule.keyword.toLowerCase())) {
-                                tx.type = rule.type;
-                                tx.category = rule.category;
-                                tx.subCategory = rule.subCategory || '';
-                                break;
+                                if (rule.keyword.length > bestMatchLength) {
+                                    bestRule = rule;
+                                    bestMatchLength = rule.keyword.length;
+                                }
                             }
+                        }
+                        
+                        // Apply the best matching rule if found
+                        if (bestRule) {
+                            tx.type = bestRule.type;
+                            tx.category = bestRule.category;
+                            tx.subCategory = bestRule.subCategory || '';
+                        } else {
+                            // If no rule matches, mark as uncategorized
+                            tx.type = 'Uncategorized';
+                            tx.category = 'Uncategorized';
+                            tx.subCategory = '';
+                            unmatchedCount++;
                         }
                         
                         // Check if categorization changed
@@ -2387,7 +2405,11 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                     saveDataToLocal();
                     populateAllDropdowns();
                     renderCategories();
-                    setCategoryStatus(`Category mapping applied successfully! ${rulesToRemove.length > 0 ? `Consolidated ${rulesToRemove.length} duplicate rules.` : ''} ${reCategorizedCount > 0 ? `Re-categorized ${reCategorizedCount} transactions.` : ''}`, 'green');
+                    let statusMsg = 'Category mapping applied successfully!';
+                    if (rulesToRemove.length > 0) statusMsg += ` Consolidated ${rulesToRemove.length} duplicate rules.`;
+                    if (reCategorizedCount > 0) statusMsg += ` Re-categorized ${reCategorizedCount} transactions.`;
+                    if (unmatchedCount > 0) statusMsg += ` ${unmatchedCount} transactions have no matching rules.`;
+                    setCategoryStatus(statusMsg, 'green');
                 } catch (err) {
                     setCategoryStatus('Error parsing mapping JSON. See console.', 'red');
                     console.error('Error parsing mapping JSON:', err);
