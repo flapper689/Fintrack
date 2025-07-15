@@ -828,7 +828,8 @@ Ensure the entire output is a single, valid JSON object.</textarea>
             if (!description) return '';
             let cleanDescription = description.replace(/\s+[#\d-].*$/,'').trim();
             if (!cleanDescription) { cleanDescription = description; }
-            cleanDescription = cleanDescription.replace(/[^a-zA-Z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+            // Allow asterisks in keywords
+            cleanDescription = cleanDescription.replace(/[^a-zA-Z0-9\s\*]/g, ' ').replace(/\s+/g, ' ').trim();
             if (cleanDescription) { return cleanDescription.toUpperCase(); }
             return '';
         }
@@ -2308,23 +2309,39 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                             tx.subCategory = match.new.subCategory || '';
                         }
                     });
-                    // 2. Update rules
+                    // 2. Update rules: always remap every rule to the best available mapping
                     rulesDB.forEach(rule => {
-                        const match = mappingObj.mapping.find(m =>
+                        // Try most specific (type/category/subCategory)
+                        let match = mappingObj.mapping.find(m =>
                             m.old.type === rule.type &&
                             m.old.category === rule.category &&
                             (m.old.subCategory || '') === (rule.subCategory || '')
                         );
+                        // Try less specific (type/category)
+                        if (!match) {
+                            match = mappingObj.mapping.find(m =>
+                                m.old.type === rule.type &&
+                                m.old.category === rule.category
+                            );
+                        }
+                        // Try even less specific (type only)
+                        if (!match) {
+                            match = mappingObj.mapping.find(m =>
+                                m.old.type === rule.type
+                            );
+                        }
+                        // Fallback: Uncategorized
                         if (match) {
                             rule.type = match.new.type;
                             rule.category = match.new.category;
                             rule.subCategory = match.new.subCategory || '';
+                        } else {
+                            rule.type = 'Uncategorized';
+                            rule.category = 'Uncategorized';
+                            rule.subCategory = '';
                         }
                     });
-                    // 3. Keep all rules but update their target categories (no consolidation)
-                    // This preserves all keywords while updating their categorization targets
-                    
-                    // 4. Build new categoryHierarchy from mapping
+                    // 3. Build new categoryHierarchy from mapping
                     const newHierarchy = {};
                     mappingObj.mapping.forEach(m => {
                         const { type, category, subCategory } = m.new;
@@ -2335,20 +2352,16 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                         }
                     });
                     categoryHierarchy = newHierarchy;
-                    
-                    // 5. Re-apply ALL rules to ALL transactions to ensure proper categorization
+                    // 4. Re-apply ALL rules to ALL transactions to ensure proper categorization
                     let reCategorizedCount = 0;
                     let improvedCount = 0;
-                    
                     transactionsDB.forEach(tx => {
                         const originalType = tx.type;
                         const originalCategory = tx.category;
                         const originalSubCategory = tx.subCategory;
-                        
                         // Find the best matching rule (most specific/longest keyword)
                         let bestRule = null;
                         let bestMatchLength = 0;
-                        
                         for (const rule of rulesDB) {
                             if (tx.description.toLowerCase().includes(rule.keyword.toLowerCase())) {
                                 if (rule.keyword.length > bestMatchLength) {
@@ -2357,26 +2370,22 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                                 }
                             }
                         }
-                        
                         // Apply the best matching rule if found (always apply if a rule matches)
                         if (bestRule) {
                             tx.type = bestRule.type;
                             tx.category = bestRule.category;
                             tx.subCategory = bestRule.subCategory || '';
-                            
                             // Check if this improved the categorization
                             const wasUncategorized = originalType === 'Uncategorized' || originalCategory === 'Uncategorized' || !originalType || !originalCategory;
                             if (wasUncategorized && tx.type !== 'Uncategorized') {
                                 improvedCount++;
                             }
                         }
-                        
                         // Check if categorization changed
                         if (originalType !== tx.type || originalCategory !== tx.category || originalSubCategory !== tx.subCategory) {
                             reCategorizedCount++;
                         }
                     });
-                    
                     saveDataToLocal();
                     populateAllDropdowns();
                     renderCategories();
