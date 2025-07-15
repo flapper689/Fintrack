@@ -244,14 +244,25 @@
             <div id="rules-page" class="page">
                 <h2 class="text-3xl font-semibold text-gray-800 mb-6">Categorization Rules</h2>
                  <div class="bg-white p-4 rounded-lg shadow-md mb-6 space-y-4">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                          <div>
                             <label for="rule-search-keyword" class="block text-sm font-medium text-gray-700">Search by Keyword</label>
                             <input type="text" id="rule-search-keyword" placeholder="e.g., Netflix" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm">
                         </div>
                         <div>
+                            <label for="rule-filter-type" class="block text-sm font-medium text-gray-700">Filter by Type</label>
+                            <select id="rule-filter-type" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm"></select>
+                        </div>
+                        <div>
                             <label for="rule-filter-category" class="block text-sm font-medium text-gray-700">Filter by Category</label>
                             <select id="rule-filter-category" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm"></select>
+                        </div>
+                        <div>
+                            <label for="rule-filter-subcategory" class="block text-sm font-medium text-gray-700">Filter by SubCategory</label>
+                            <select id="rule-filter-subcategory" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm"></select>
+                        </div>
+                        <div class="md:col-span-4 flex justify-end mt-2">
+                            <button id="rule-filter-reset" class="bg-gray-200 text-gray-800 font-bold py-1 px-3 rounded-lg text-xs">Reset</button>
                         </div>
                     </div>
                 </div>
@@ -2568,6 +2579,99 @@ Ensure the entire output is a single, valid JSON object.</textarea>
         if (filters.subCategory && sub !== filters.subCategory) return;
         // ... existing code ...
         // Also, call populateCategoryFilters() after any change to the hierarchy or on page load.
+
+        // 1. Add filter controls to the Rules page (next to existing filters)
+        // Find the rules filter section and add Type and SubCategory dropdowns and a Reset button
+        // ... existing code ...
+        // In the rules filter section, update to:
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div>
+            <label for="rule-search-keyword" class="block text-sm font-medium text-gray-700">Search by Keyword</label>
+            <input type="text" id="rule-search-keyword" placeholder="e.g., Netflix" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm">
+          </div>
+          <div>
+            <label for="rule-filter-type" class="block text-sm font-medium text-gray-700">Filter by Type</label>
+            <select id="rule-filter-type" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm"></select>
+          </div>
+          <div>
+            <label for="rule-filter-category" class="block text-sm font-medium text-gray-700">Filter by Category</label>
+            <select id="rule-filter-category" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm"></select>
+          </div>
+          <div>
+            <label for="rule-filter-subcategory" class="block text-sm font-medium text-gray-700">Filter by SubCategory</label>
+            <select id="rule-filter-subcategory" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm"></select>
+          </div>
+          <div class="md:col-span-4 flex justify-end mt-2">
+            <button id="rule-filter-reset" class="bg-gray-200 text-gray-800 font-bold py-1 px-3 rounded-lg text-xs">Reset</button>
+          </div>
+        </div>
+
+        // 2. Add JS logic for filter controls
+        const ruleFilterTypeEl = document.getElementById('rule-filter-type');
+        const ruleFilterCategoryEl = document.getElementById('rule-filter-category');
+        const ruleFilterSubCategoryEl = document.getElementById('rule-filter-subcategory');
+        const ruleFilterResetBtn = document.getElementById('rule-filter-reset');
+
+        function populateRuleFilters() {
+          // Populate Type
+          const types = Array.from(new Set(rulesDB.map(r => r.type))).sort();
+          ruleFilterTypeEl.innerHTML = '<option value="">All Types</option>' + types.map(t => `<option value="${t}">${t}</option>`).join('');
+          // Populate Category
+          const selectedType = ruleFilterTypeEl.value;
+          let categories = [];
+          if (selectedType) {
+            categories = Array.from(new Set(rulesDB.filter(r => r.type === selectedType).map(r => r.category))).sort();
+          } else {
+            categories = Array.from(new Set(rulesDB.map(r => r.category))).sort();
+          }
+          ruleFilterCategoryEl.innerHTML = '<option value="">All Categories</option>' + categories.map(c => `<option value="${c}">${c}</option>`).join('');
+          // Populate SubCategory
+          const selectedCategory = ruleFilterCategoryEl.value;
+          let subcategories = [];
+          if (selectedType && selectedCategory) {
+            subcategories = Array.from(new Set(rulesDB.filter(r => r.type === selectedType && r.category === selectedCategory).map(r => r.subCategory || ''))).sort();
+          } else if (selectedCategory) {
+            subcategories = Array.from(new Set(rulesDB.filter(r => r.category === selectedCategory).map(r => r.subCategory || ''))).sort();
+          } else {
+            subcategories = Array.from(new Set(rulesDB.map(r => r.subCategory || ''))).sort();
+          }
+          ruleFilterSubCategoryEl.innerHTML = '<option value="">All SubCategories</option>' + subcategories.map(s => `<option value="${s}">${s}</option>`).join('');
+        }
+
+        ruleFilterTypeEl.addEventListener('change', () => {
+          populateRuleFilters();
+          renderRulesTable();
+        });
+        ruleFilterCategoryEl.addEventListener('change', () => {
+          populateRuleFilters();
+          renderRulesTable();
+        });
+        ruleFilterSubCategoryEl.addEventListener('change', renderRulesTable);
+        ruleFilterResetBtn.addEventListener('click', () => {
+          ruleFilterTypeEl.value = '';
+          ruleFilterCategoryEl.value = '';
+          ruleFilterSubCategoryEl.value = '';
+          populateRuleFilters();
+          renderRulesTable();
+        });
+
+        // 3. Update renderRulesTable to apply all filters
+        const getRuleFilterValues = () => ({
+          type: ruleFilterTypeEl.value,
+          category: ruleFilterCategoryEl.value,
+          subCategory: ruleFilterSubCategoryEl.value,
+          keyword: ruleSearchKeywordInput.value.trim().toLowerCase()
+        });
+
+        // In renderRulesTable, before filtering rules, get the filters:
+        const filters = getRuleFilterValues();
+        // Then, when filtering rules:
+        if (filters.type && r.type !== filters.type) return false;
+        if (filters.category && r.category !== filters.category) return false;
+        if (filters.subCategory && (r.subCategory || '') !== filters.subCategory) return false;
+        if (filters.keyword && !r.keyword.toLowerCase().includes(filters.keyword)) return false;
+        return true;
+        // Also, call populateRuleFilters() after any change to rulesDB or on page load.
     </script>
 </body>
 </html>
