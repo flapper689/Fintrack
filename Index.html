@@ -1716,13 +1716,19 @@ Ensure the entire output is a single, valid JSON object.</textarea>
 
         function renderCategories() {
             let totalCategories = 0;
+            const catFilters = getCategoryFilterValues();
             Object.keys(categoryHierarchy).forEach(type => {
-                totalCategories++; // count type
+                if (catFilters.type && type !== catFilters.type) return;
+                totalCategories++;
                 const categories = Object.keys(categoryHierarchy[type]);
-                totalCategories += categories.length; // count categories
                 categories.forEach(category => {
+                    if (catFilters.category && category !== catFilters.category) return;
+                    totalCategories++;
                     if (Array.isArray(categoryHierarchy[type][category])) {
-                        totalCategories += categoryHierarchy[type][category].length; // count sub-categories
+                        categoryHierarchy[type][category].forEach(subCategory => {
+                            if (catFilters.subCategory && subCategory !== catFilters.subCategory) return;
+                            totalCategories++;
+                        });
                     }
                 });
             });
@@ -1856,28 +1862,15 @@ Ensure the entire output is a single, valid JSON object.</textarea>
         function handleDeleteRule(index) { rulesDB.splice(index, 1); renderRulesTable(); saveDataToLocal(); }
 
         function renderRulesTable() {
-            // Get filter values
-            const keyword = ruleSearchKeywordInput.value.trim().toLowerCase();
-            const filterCat = ruleFilterCategorySelect.value;
-            // Build unique category list for dropdown
-            const allCategories = Array.from(new Set(rulesDB.map(r => r.category))).sort();
-            ruleFilterCategorySelect.innerHTML = '<option value="">All Categories</option>' + allCategories.map(c => `<option value="${c}">${c}</option>`).join('');
-            if (filterCat) ruleFilterCategorySelect.value = filterCat;
-            // Filter rules
-            let filteredRules = rulesDB;
-            if (keyword) filteredRules = filteredRules.filter(r => r.keyword.toLowerCase().includes(keyword));
-            if (filterCat) filteredRules = filteredRules.filter(r => r.category === filterCat);
-            rulesCount.textContent = `(${filteredRules.length} total)`;
-            if (filteredRules.length === 0) { rulesListContainer.innerHTML = `<p class="text-gray-500 text-center p-10">No rules match the current filters.</p>`; return; }
-            let tableHTML = `<table class="min-w-full data-table"><thead class="border-b"><tr><th class="font-semibold text-sm text-gray-600 uppercase tracking-wider">Keyword</th><th class="font-semibold text-sm text-gray-600 uppercase tracking-wider">Categorization</th><th class="font-semibold text-sm text-gray-600 uppercase tracking-wider"></th></tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
-            filteredRules.sort((a,b) => a.keyword.localeCompare(b.keyword));
-            filteredRules.forEach((rule, index) => {
-                const fullCategory = `${rule.type} > ${rule.category}` + (rule.subCategory ? ` > ${rule.subCategory}`: '');
-                // Find the rule's index in rulesDB for delete
-                const ruleIdx = rulesDB.findIndex(r => r.keyword === rule.keyword && r.type === rule.type && r.category === rule.category && r.subCategory === rule.subCategory);
-                tableHTML += `<tr><td class="text-sm font-medium text-gray-900">${rule.keyword}</td><td class="text-sm text-gray-500">${fullCategory}</td><td class="text-right flex gap-2 justify-end"><button onclick="handleEditRule(${ruleIdx})" class="text-blue-500 hover:text-blue-700 mr-2" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path></svg></button><button onclick="handleDeleteRule(${ruleIdx})" class="text-red-500 hover:text-red-700" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button></td></tr>`;
+            const ruleFilters = getRuleFilterValues();
+            let filteredRules = rulesDB.filter(r => {
+                if (ruleFilters.type && r.type !== ruleFilters.type) return false;
+                if (ruleFilters.category && r.category !== ruleFilters.category) return false;
+                if (ruleFilters.subCategory && (r.subCategory || '') !== ruleFilters.subCategory) return false;
+                if (ruleFilters.keyword && !r.keyword.toLowerCase().includes(ruleFilters.keyword)) return false;
+                return true;
             });
-            tableHTML += `</tbody></table>`; rulesListContainer.innerHTML = tableHTML;
+            // ... rest of renderRulesTable logic ...
         }
         
         function generateReport() {
@@ -2475,22 +2468,6 @@ Ensure the entire output is a single, valid JSON object.</textarea>
         // Find the categories list container and insert filter controls above it
         // ... existing code ...
         // Add after <div class="flex justify-between items-center mb-4"> ... </div>
-
-        <div class="mb-4 flex flex-wrap gap-2 items-end" id="category-filters-container">
-          <div>
-            <label for="cat-filter-type" class="block text-xs font-medium text-gray-700">Type</label>
-            <select id="cat-filter-type" class="mt-1 rounded-md border-gray-300 shadow-sm text-xs"></select>
-          </div>
-          <div>
-            <label for="cat-filter-category" class="block text-xs font-medium text-gray-700">Category</label>
-            <select id="cat-filter-category" class="mt-1 rounded-md border-gray-300 shadow-sm text-xs"></select>
-          </div>
-          <div>
-            <label for="cat-filter-subcategory" class="block text-xs font-medium text-gray-700">SubCategory</label>
-            <select id="cat-filter-subcategory" class="mt-1 rounded-md border-gray-300 shadow-sm text-xs"></select>
-          </div>
-          <button id="cat-filter-reset" class="bg-gray-200 text-gray-800 font-bold py-1 px-3 rounded-lg text-xs ml-2">Reset</button>
-        </div>
 
         // 2. Add JS logic for filter controls
         // ... after DOM element references ...
