@@ -2327,37 +2327,19 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                             tx.subCategory = match.new.subCategory || '';
                         }
                     });
-                    // 2. Update rules: always remap every rule to the best available mapping
+                    // 2. Update rules: only update if there is an exact match in the mapping
                     rulesDB.forEach(rule => {
-                        // Try most specific (type/category/subCategory)
-                        let match = mappingObj.mapping.find(m =>
+                        const match = mappingObj.mapping.find(m =>
                             m.old.type === rule.type &&
                             m.old.category === rule.category &&
                             (m.old.subCategory || '') === (rule.subCategory || '')
                         );
-                        // Try less specific (type/category)
-                        if (!match) {
-                            match = mappingObj.mapping.find(m =>
-                                m.old.type === rule.type &&
-                                m.old.category === rule.category
-                            );
-                        }
-                        // Try even less specific (type only)
-                        if (!match) {
-                            match = mappingObj.mapping.find(m =>
-                                m.old.type === rule.type
-                            );
-                        }
-                        // Fallback: Uncategorized
                         if (match) {
                             rule.type = match.new.type;
                             rule.category = match.new.category;
                             rule.subCategory = match.new.subCategory || '';
-                        } else {
-                            rule.type = 'Uncategorized';
-                            rule.category = 'Uncategorized';
-                            rule.subCategory = '';
                         }
+                        // else: leave rule as-is
                     });
                     // 3. Build new categoryHierarchy from mapping
                     const newHierarchy = {};
