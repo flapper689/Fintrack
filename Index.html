@@ -244,25 +244,14 @@
             <div id="rules-page" class="page">
                 <h2 class="text-3xl font-semibold text-gray-800 mb-6">Categorization Rules</h2>
                  <div class="bg-white p-4 rounded-lg shadow-md mb-6 space-y-4">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                          <div>
                             <label for="rule-search-keyword" class="block text-sm font-medium text-gray-700">Search by Keyword</label>
                             <input type="text" id="rule-search-keyword" placeholder="e.g., Netflix" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm">
                         </div>
                         <div>
-                            <label for="rule-filter-type" class="block text-sm font-medium text-gray-700">Filter by Type</label>
-                            <select id="rule-filter-type" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm"></select>
-                        </div>
-                        <div>
                             <label for="rule-filter-category" class="block text-sm font-medium text-gray-700">Filter by Category</label>
                             <select id="rule-filter-category" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm"></select>
-                        </div>
-                        <div>
-                            <label for="rule-filter-subcategory" class="block text-sm font-medium text-gray-700">Filter by SubCategory</label>
-                            <select id="rule-filter-subcategory" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm"></select>
-                        </div>
-                        <div class="md:col-span-4 flex justify-end mt-2">
-                            <button id="rule-filter-reset" class="bg-gray-200 text-gray-800 font-bold py-1 px-3 rounded-lg text-xs">Reset</button>
                         </div>
                     </div>
                 </div>
@@ -1716,19 +1705,13 @@ Ensure the entire output is a single, valid JSON object.</textarea>
 
         function renderCategories() {
             let totalCategories = 0;
-            const catFilters = getCategoryFilterValues();
             Object.keys(categoryHierarchy).forEach(type => {
-                if (catFilters.type && type !== catFilters.type) return;
-                totalCategories++;
+                totalCategories++; // count type
                 const categories = Object.keys(categoryHierarchy[type]);
+                totalCategories += categories.length; // count categories
                 categories.forEach(category => {
-                    if (catFilters.category && category !== catFilters.category) return;
-                    totalCategories++;
                     if (Array.isArray(categoryHierarchy[type][category])) {
-                        categoryHierarchy[type][category].forEach(subCategory => {
-                            if (catFilters.subCategory && subCategory !== catFilters.subCategory) return;
-                            totalCategories++;
-                        });
+                        totalCategories += categoryHierarchy[type][category].length; // count sub-categories
                     }
                 });
             });
@@ -1862,15 +1845,28 @@ Ensure the entire output is a single, valid JSON object.</textarea>
         function handleDeleteRule(index) { rulesDB.splice(index, 1); renderRulesTable(); saveDataToLocal(); }
 
         function renderRulesTable() {
-            const ruleFilters = getRuleFilterValues();
-            let filteredRules = rulesDB.filter(r => {
-                if (ruleFilters.type && r.type !== ruleFilters.type) return false;
-                if (ruleFilters.category && r.category !== ruleFilters.category) return false;
-                if (ruleFilters.subCategory && (r.subCategory || '') !== ruleFilters.subCategory) return false;
-                if (ruleFilters.keyword && !r.keyword.toLowerCase().includes(ruleFilters.keyword)) return false;
-                return true;
+            // Get filter values
+            const keyword = ruleSearchKeywordInput.value.trim().toLowerCase();
+            const filterCat = ruleFilterCategorySelect.value;
+            // Build unique category list for dropdown
+            const allCategories = Array.from(new Set(rulesDB.map(r => r.category))).sort();
+            ruleFilterCategorySelect.innerHTML = '<option value="">All Categories</option>' + allCategories.map(c => `<option value="${c}">${c}</option>`).join('');
+            if (filterCat) ruleFilterCategorySelect.value = filterCat;
+            // Filter rules
+            let filteredRules = rulesDB;
+            if (keyword) filteredRules = filteredRules.filter(r => r.keyword.toLowerCase().includes(keyword));
+            if (filterCat) filteredRules = filteredRules.filter(r => r.category === filterCat);
+            rulesCount.textContent = `(${filteredRules.length} total)`;
+            if (filteredRules.length === 0) { rulesListContainer.innerHTML = `<p class="text-gray-500 text-center p-10">No rules match the current filters.</p>`; return; }
+            let tableHTML = `<table class="min-w-full data-table"><thead class="border-b"><tr><th class="font-semibold text-sm text-gray-600 uppercase tracking-wider">Keyword</th><th class="font-semibold text-sm text-gray-600 uppercase tracking-wider">Categorization</th><th class="font-semibold text-sm text-gray-600 uppercase tracking-wider"></th></tr></thead><tbody class="bg-white divide-y divide-gray-200">`;
+            filteredRules.sort((a,b) => a.keyword.localeCompare(b.keyword));
+            filteredRules.forEach((rule, index) => {
+                const fullCategory = `${rule.type} > ${rule.category}` + (rule.subCategory ? ` > ${rule.subCategory}`: '');
+                // Find the rule's index in rulesDB for delete
+                const ruleIdx = rulesDB.findIndex(r => r.keyword === rule.keyword && r.type === rule.type && r.category === rule.category && r.subCategory === rule.subCategory);
+                tableHTML += `<tr><td class="text-sm font-medium text-gray-900">${rule.keyword}</td><td class="text-sm text-gray-500">${fullCategory}</td><td class="text-right flex gap-2 justify-end"><button onclick="handleEditRule(${ruleIdx})" class="text-blue-500 hover:text-blue-700 mr-2" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path></svg></button><button onclick="handleDeleteRule(${ruleIdx})" class="text-red-500 hover:text-red-700" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></button></td></tr>`;
             });
-            // ... rest of renderRulesTable logic ...
+            tableHTML += `</tbody></table>`; rulesListContainer.innerHTML = tableHTML;
         }
         
         function generateReport() {
@@ -2463,192 +2459,6 @@ Ensure the entire output is a single, valid JSON object.</textarea>
             renderRulesTable();
             saveDataToLocal();
         }
-
-        // 1. Add filter controls above the categories list
-        // Find the categories list container and insert filter controls above it
-        // ... existing code ...
-        // Add after <div class="flex justify-between items-center mb-4"> ... </div>
-
-        // 2. Add JS logic for filter controls
-        // ... after DOM element references ...
-        const catFilterType = document.createElement('select');
-        const catFilterCategory = document.createElement('select');
-        const catFilterSubCategory = document.createElement('select');
-        // But we will use getElementById for the real ones:
-        const catFilterTypeEl = document.getElementById('cat-filter-type');
-        const catFilterCategoryEl = document.getElementById('cat-filter-category');
-        const catFilterSubCategoryEl = document.getElementById('cat-filter-subcategory');
-        const catFilterResetBtn = document.getElementById('cat-filter-reset');
-
-        function populateCategoryFilters() {
-          // Populate Type
-          const types = Object.keys(categoryHierarchy).sort();
-          catFilterTypeEl.innerHTML = '<option value="">All Types</option>' + types.map(t => `<option value="${t}">${t}</option>`).join('');
-          // Populate Category
-          const selectedType = catFilterTypeEl.value;
-          let categories = [];
-          if (selectedType && categoryHierarchy[selectedType]) {
-            categories = Object.keys(categoryHierarchy[selectedType]).sort();
-          } else {
-            // All categories from all types
-            const allCats = new Set();
-            types.forEach(t => Object.keys(categoryHierarchy[t]).forEach(c => allCats.add(c)));
-            categories = Array.from(allCats).sort();
-          }
-          catFilterCategoryEl.innerHTML = '<option value="">All Categories</option>' + categories.map(c => `<option value="${c}">${c}</option>`).join('');
-          // Populate SubCategory
-          const selectedCategory = catFilterCategoryEl.value;
-          let subcategories = [];
-          if (selectedType && selectedCategory && categoryHierarchy[selectedType] && categoryHierarchy[selectedType][selectedCategory]) {
-            subcategories = categoryHierarchy[selectedType][selectedCategory].slice().sort();
-          } else if (selectedCategory) {
-            // All subcategories for this category across all types
-            const allSubs = new Set();
-            types.forEach(t => {
-              if (categoryHierarchy[t][selectedCategory]) {
-                categoryHierarchy[t][selectedCategory].forEach(s => allSubs.add(s));
-              }
-            });
-            subcategories = Array.from(allSubs).sort();
-          } else {
-            // All subcategories
-            const allSubs = new Set();
-            types.forEach(t => Object.keys(categoryHierarchy[t]).forEach(c => categoryHierarchy[t][c].forEach(s => allSubs.add(s))));
-            subcategories = Array.from(allSubs).sort();
-          }
-          catFilterSubCategoryEl.innerHTML = '<option value="">All SubCategories</option>' + subcategories.map(s => `<option value="${s}">${s}</option>`).join('');
-        }
-
-        catFilterTypeEl.addEventListener('change', () => {
-          populateCategoryFilters();
-          renderCategories();
-        });
-        catFilterCategoryEl.addEventListener('change', () => {
-          populateCategoryFilters();
-          renderCategories();
-        });
-        catFilterSubCategoryEl.addEventListener('change', renderCategories);
-        catFilterResetBtn.addEventListener('click', () => {
-          catFilterTypeEl.value = '';
-          catFilterCategoryEl.value = '';
-          catFilterSubCategoryEl.value = '';
-          populateCategoryFilters();
-          renderCategories();
-        });
-
-        // 3. Update renderCategories to apply filters
-        const getCategoryFilterValues = () => ({
-          type: catFilterTypeEl.value,
-          category: catFilterCategoryEl.value,
-          subCategory: catFilterSubCategoryEl.value
-        });
-
-        // In renderCategories, before building the HTML, filter the types/categories/subcategories
-        // ... existing code ...
-        // Add at the start of renderCategories:
-        const filters = getCategoryFilterValues();
-        // ... then, when looping types/categories/subcategories, only include those that match the filters ...
-        // For each type:
-        if (filters.type && type !== filters.type) return;
-        // For each category:
-        if (filters.category && category !== filters.category) return;
-        // For each subcategory:
-        if (filters.subCategory && sub !== filters.subCategory) return;
-        // ... existing code ...
-        // Also, call populateCategoryFilters() after any change to the hierarchy or on page load.
-
-        // 1. Add filter controls to the Rules page (next to existing filters)
-        // Find the rules filter section and add Type and SubCategory dropdowns and a Reset button
-        // ... existing code ...
-        // In the rules filter section, update to:
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label for="rule-search-keyword" class="block text-sm font-medium text-gray-700">Search by Keyword</label>
-            <input type="text" id="rule-search-keyword" placeholder="e.g., Netflix" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm">
-          </div>
-          <div>
-            <label for="rule-filter-type" class="block text-sm font-medium text-gray-700">Filter by Type</label>
-            <select id="rule-filter-type" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm"></select>
-          </div>
-          <div>
-            <label for="rule-filter-category" class="block text-sm font-medium text-gray-700">Filter by Category</label>
-            <select id="rule-filter-category" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm"></select>
-          </div>
-          <div>
-            <label for="rule-filter-subcategory" class="block text-sm font-medium text-gray-700">Filter by SubCategory</label>
-            <select id="rule-filter-subcategory" class="mt-1 w-full rounded-md border-gray-300 shadow-sm text-sm"></select>
-          </div>
-          <div class="md:col-span-4 flex justify-end mt-2">
-            <button id="rule-filter-reset" class="bg-gray-200 text-gray-800 font-bold py-1 px-3 rounded-lg text-xs">Reset</button>
-          </div>
-        </div>
-
-        // 2. Add JS logic for filter controls
-        const ruleFilterTypeEl = document.getElementById('rule-filter-type');
-        const ruleFilterCategoryEl = document.getElementById('rule-filter-category');
-        const ruleFilterSubCategoryEl = document.getElementById('rule-filter-subcategory');
-        const ruleFilterResetBtn = document.getElementById('rule-filter-reset');
-
-        function populateRuleFilters() {
-          // Populate Type
-          const types = Array.from(new Set(rulesDB.map(r => r.type))).sort();
-          ruleFilterTypeEl.innerHTML = '<option value="">All Types</option>' + types.map(t => `<option value="${t}">${t}</option>`).join('');
-          // Populate Category
-          const selectedType = ruleFilterTypeEl.value;
-          let categories = [];
-          if (selectedType) {
-            categories = Array.from(new Set(rulesDB.filter(r => r.type === selectedType).map(r => r.category))).sort();
-          } else {
-            categories = Array.from(new Set(rulesDB.map(r => r.category))).sort();
-          }
-          ruleFilterCategoryEl.innerHTML = '<option value="">All Categories</option>' + categories.map(c => `<option value="${c}">${c}</option>`).join('');
-          // Populate SubCategory
-          const selectedCategory = ruleFilterCategoryEl.value;
-          let subcategories = [];
-          if (selectedType && selectedCategory) {
-            subcategories = Array.from(new Set(rulesDB.filter(r => r.type === selectedType && r.category === selectedCategory).map(r => r.subCategory || ''))).sort();
-          } else if (selectedCategory) {
-            subcategories = Array.from(new Set(rulesDB.filter(r => r.category === selectedCategory).map(r => r.subCategory || ''))).sort();
-          } else {
-            subcategories = Array.from(new Set(rulesDB.map(r => r.subCategory || ''))).sort();
-          }
-          ruleFilterSubCategoryEl.innerHTML = '<option value="">All SubCategories</option>' + subcategories.map(s => `<option value="${s}">${s}</option>`).join('');
-        }
-
-        ruleFilterTypeEl.addEventListener('change', () => {
-          populateRuleFilters();
-          renderRulesTable();
-        });
-        ruleFilterCategoryEl.addEventListener('change', () => {
-          populateRuleFilters();
-          renderRulesTable();
-        });
-        ruleFilterSubCategoryEl.addEventListener('change', renderRulesTable);
-        ruleFilterResetBtn.addEventListener('click', () => {
-          ruleFilterTypeEl.value = '';
-          ruleFilterCategoryEl.value = '';
-          ruleFilterSubCategoryEl.value = '';
-          populateRuleFilters();
-          renderRulesTable();
-        });
-
-        // 3. Update renderRulesTable to apply all filters
-        const getRuleFilterValues = () => ({
-          type: ruleFilterTypeEl.value,
-          category: ruleFilterCategoryEl.value,
-          subCategory: ruleFilterSubCategoryEl.value,
-          keyword: ruleSearchKeywordInput.value.trim().toLowerCase()
-        });
-
-        // In renderRulesTable, before filtering rules, get the filters:
-        const filters = getRuleFilterValues();
-        // Then, when filtering rules:
-        if (filters.type && r.type !== filters.type) return false;
-        if (filters.category && r.category !== filters.category) return false;
-        if (filters.subCategory && (r.subCategory || '') !== filters.subCategory) return false;
-        if (filters.keyword && !r.keyword.toLowerCase().includes(filters.keyword)) return false;
-        return true;
-        // Also, call populateRuleFilters() after any change to rulesDB or on page load.
     </script>
 </body>
 </html>
