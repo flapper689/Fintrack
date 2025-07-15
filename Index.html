@@ -2357,7 +2357,8 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                             tx.subCategory = match.new.subCategory || '';
                         }
                     });
-                    // 2. Update rules: only update if there is an exact match in the mapping
+                    // 2. Update rules: update if mapping exists, else log warning
+                    let unmappedRules = [];
                     rulesDB.forEach(rule => {
                         const match = mappingObj.mapping.find(m =>
                             m.old.type === rule.type &&
@@ -2368,8 +2369,14 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                             rule.type = match.new.type;
                             rule.category = match.new.category;
                             rule.subCategory = match.new.subCategory || '';
+                        } else {
+                            unmappedRules.push({
+                                keyword: rule.keyword,
+                                type: rule.type,
+                                category: rule.category,
+                                subCategory: rule.subCategory || ''
+                            });
                         }
-                        // else: leave rule as-is
                     });
                     // 3. Build new categoryHierarchy from mapping
                     const newHierarchy = {};
@@ -2422,7 +2429,11 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                     let statusMsg = 'Category mapping applied successfully!';
                     if (reCategorizedCount > 0) statusMsg += ` Updated ${reCategorizedCount} transactions.`;
                     if (improvedCount > 0) statusMsg += ` Improved categorization for ${improvedCount} transactions.`;
-                    setCategoryStatus(statusMsg, 'green');
+                    if (unmappedRules.length > 0) statusMsg += ` ${unmappedRules.length} rules could not be mapped and still use old categories.`;
+                    setCategoryStatus(statusMsg, unmappedRules.length > 0 ? 'yellow' : 'green');
+                    if (unmappedRules.length > 0) {
+                        console.warn('Unmapped rules after category mapping import:', unmappedRules);
+                    }
                 } catch (err) {
                     setCategoryStatus('Error parsing mapping JSON. See console.', 'red');
                     console.error('Error parsing mapping JSON:', err);
