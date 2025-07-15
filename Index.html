@@ -2321,7 +2321,35 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                             rule.subCategory = match.new.subCategory || '';
                         }
                     });
-                    // 3. Build new categoryHierarchy from mapping
+                    // 3. Consolidate duplicate rules that now point to the same category
+                    const ruleMap = new Map();
+                    const rulesToRemove = [];
+                    
+                    rulesDB.forEach((rule, index) => {
+                        const ruleKey = `${rule.type}|${rule.category}|${rule.subCategory || ''}`;
+                        if (ruleMap.has(ruleKey)) {
+                            // This rule now points to the same category as an existing rule
+                            // Keep the rule with the more specific keyword (longer keyword)
+                            const existingRule = rulesDB[ruleMap.get(ruleKey)];
+                            if (rule.keyword.length > existingRule.keyword.length) {
+                                // Replace the existing rule with this one
+                                rulesToRemove.push(ruleMap.get(ruleKey));
+                                ruleMap.set(ruleKey, index);
+                            } else {
+                                // Remove this rule
+                                rulesToRemove.push(index);
+                            }
+                        } else {
+                            ruleMap.set(ruleKey, index);
+                        }
+                    });
+                    
+                    // Remove duplicate rules (in reverse order to maintain indices)
+                    rulesToRemove.sort((a, b) => b - a).forEach(index => {
+                        rulesDB.splice(index, 1);
+                    });
+                    
+                    // 4. Build new categoryHierarchy from mapping
                     const newHierarchy = {};
                     mappingObj.mapping.forEach(m => {
                         const { type, category, subCategory } = m.new;
@@ -2335,7 +2363,7 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                     saveDataToLocal();
                     populateAllDropdowns();
                     renderCategories();
-                    setCategoryStatus('Category mapping applied successfully!', 'green');
+                    setCategoryStatus(`Category mapping applied successfully! ${rulesToRemove.length > 0 ? `Consolidated ${rulesToRemove.length} duplicate rules.` : ''}`, 'green');
                 } catch (err) {
                     setCategoryStatus('Error parsing mapping JSON. See console.', 'red');
                     console.error('Error parsing mapping JSON:', err);
