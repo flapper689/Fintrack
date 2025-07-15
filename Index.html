@@ -2321,33 +2321,8 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                             rule.subCategory = match.new.subCategory || '';
                         }
                     });
-                    // 3. Consolidate duplicate rules that now point to the same category
-                    const ruleMap = new Map();
-                    const rulesToRemove = [];
-                    
-                    rulesDB.forEach((rule, index) => {
-                        const ruleKey = `${rule.type}|${rule.category}|${rule.subCategory || ''}`;
-                        if (ruleMap.has(ruleKey)) {
-                            // This rule now points to the same category as an existing rule
-                            // Keep the rule with the more specific keyword (longer keyword)
-                            const existingRule = rulesDB[ruleMap.get(ruleKey)];
-                            if (rule.keyword.length > existingRule.keyword.length) {
-                                // Replace the existing rule with this one
-                                rulesToRemove.push(ruleMap.get(ruleKey));
-                                ruleMap.set(ruleKey, index);
-                            } else {
-                                // Remove this rule
-                                rulesToRemove.push(index);
-                            }
-                        } else {
-                            ruleMap.set(ruleKey, index);
-                        }
-                    });
-                    
-                    // Remove duplicate rules (in reverse order to maintain indices)
-                    rulesToRemove.sort((a, b) => b - a).forEach(index => {
-                        rulesDB.splice(index, 1);
-                    });
+                    // 3. Keep all rules but update their target categories (no consolidation)
+                    // This preserves all keywords while updating their categorization targets
                     
                     // 4. Build new categoryHierarchy from mapping
                     const newHierarchy = {};
@@ -2361,7 +2336,7 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                     });
                     categoryHierarchy = newHierarchy;
                     
-                    // 5. Re-apply rules only to transactions that might benefit from better rule matching
+                    // 5. Re-apply ALL rules to ALL transactions to ensure proper categorization
                     let reCategorizedCount = 0;
                     let improvedCount = 0;
                     
@@ -2383,19 +2358,15 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                             }
                         }
                         
-                        // Only apply a rule if it's better than the current categorization
-                        // or if the transaction is currently uncategorized
-                        const isCurrentlyUncategorized = !tx.type || tx.type === 'Uncategorized' || !tx.category || tx.category === 'Uncategorized';
-                        
-                        if (bestRule && (isCurrentlyUncategorized || bestMatchLength > 3)) {
-                            // Only apply if it's a reasonably specific match (keyword length > 3)
-                            // or if the transaction is currently uncategorized
+                        // Apply the best matching rule if found (always apply if a rule matches)
+                        if (bestRule) {
                             tx.type = bestRule.type;
                             tx.category = bestRule.category;
                             tx.subCategory = bestRule.subCategory || '';
                             
                             // Check if this improved the categorization
-                            if (isCurrentlyUncategorized && tx.type !== 'Uncategorized') {
+                            const wasUncategorized = originalType === 'Uncategorized' || originalCategory === 'Uncategorized' || !originalType || !originalCategory;
+                            if (wasUncategorized && tx.type !== 'Uncategorized') {
                                 improvedCount++;
                             }
                         }
@@ -2410,7 +2381,6 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                     populateAllDropdowns();
                     renderCategories();
                     let statusMsg = 'Category mapping applied successfully!';
-                    if (rulesToRemove.length > 0) statusMsg += ` Consolidated ${rulesToRemove.length} duplicate rules.`;
                     if (reCategorizedCount > 0) statusMsg += ` Updated ${reCategorizedCount} transactions.`;
                     if (improvedCount > 0) statusMsg += ` Improved categorization for ${improvedCount} transactions.`;
                     setCategoryStatus(statusMsg, 'green');
