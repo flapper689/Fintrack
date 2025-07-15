@@ -2360,10 +2360,34 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                         }
                     });
                     categoryHierarchy = newHierarchy;
+                    
+                    // 5. Re-apply rules to all transactions to ensure proper categorization
+                    let reCategorizedCount = 0;
+                    transactionsDB.forEach(tx => {
+                        const originalType = tx.type;
+                        const originalCategory = tx.category;
+                        const originalSubCategory = tx.subCategory;
+                        
+                        // Apply rules to this transaction
+                        for (const rule of rulesDB) {
+                            if (tx.description.toLowerCase().includes(rule.keyword.toLowerCase())) {
+                                tx.type = rule.type;
+                                tx.category = rule.category;
+                                tx.subCategory = rule.subCategory || '';
+                                break;
+                            }
+                        }
+                        
+                        // Check if categorization changed
+                        if (originalType !== tx.type || originalCategory !== tx.category || originalSubCategory !== tx.subCategory) {
+                            reCategorizedCount++;
+                        }
+                    });
+                    
                     saveDataToLocal();
                     populateAllDropdowns();
                     renderCategories();
-                    setCategoryStatus(`Category mapping applied successfully! ${rulesToRemove.length > 0 ? `Consolidated ${rulesToRemove.length} duplicate rules.` : ''}`, 'green');
+                    setCategoryStatus(`Category mapping applied successfully! ${rulesToRemove.length > 0 ? `Consolidated ${rulesToRemove.length} duplicate rules.` : ''} ${reCategorizedCount > 0 ? `Re-categorized ${reCategorizedCount} transactions.` : ''}`, 'green');
                 } catch (err) {
                     setCategoryStatus('Error parsing mapping JSON. See console.', 'red');
                     console.error('Error parsing mapping JSON:', err);
