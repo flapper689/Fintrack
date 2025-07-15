@@ -2529,17 +2529,6 @@ Ensure the entire output is a single, valid JSON object.</textarea>
           };
         }
 
-        function renderRulesTable() {
-          const filters = getRuleFilterValues();
-          let filteredRules = rulesDB.filter(r => {
-            if (filters.type && r.type !== filters.type) return false;
-            if (filters.category && r.category !== filters.category) return false;
-            if (filters.subCategory && (r.subCategory || '') !== filters.subCategory) return false;
-            if (filters.keyword && !r.keyword.toLowerCase().includes(filters.keyword)) return false;
-            return true;
-          });
-          // ... rest of your renderRulesTable logic ...
-        }
         // After loading or updating rulesDB, call populateRuleFilters() to keep dropdowns in sync.
         // ... existing code ...
     </script>
