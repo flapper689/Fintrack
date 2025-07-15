@@ -635,6 +635,7 @@ Ensure the entire output is a single, valid JSON object.</textarea>
         // Add after DOM element references:
         const ruleSearchKeywordInput = document.getElementById('rule-search-keyword');
         const ruleFilterCategorySelect = document.getElementById('rule-filter-category');
+        const exportBackupBtn = document.getElementById('export-backup-btn');
 
         // --- Data Persistence ---
         function saveDataToLocal() {
@@ -783,6 +784,23 @@ Ensure the entire output is a single, valid JSON object.</textarea>
         // Add event listeners:
         ruleSearchKeywordInput.addEventListener('input', renderRulesTable);
         ruleFilterCategorySelect.addEventListener('change', renderRulesTable);
+        exportBackupBtn.addEventListener('click', () => {
+            const backup = {
+                transactions: transactionsDB,
+                categories: categoryHierarchy,
+                rules: rulesDB
+            };
+            const jsonStr = JSON.stringify(backup, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'FinTrack_Backup.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        });
 
         // --- Core Application Logic ---
 
