@@ -2399,6 +2399,10 @@ Ensure the entire output is a single, valid JSON object.</textarea>
             event.target.value = null;
         }
 
+        function catToString(cat) {
+            return `${cat.type || ''}|${cat.category || ''}|${cat.subCategory || ''}`;
+        }
+
         function handleImportCategoryMappingJSON(event) {
             const file = event.target.files[0];
             if (!file) return;
