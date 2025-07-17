@@ -545,6 +545,33 @@ Ensure the entire output is a single, valid JSON object.</textarea>
         </div>
     </div>
     
+    <div id="validation-modal" class="modal fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center hidden">
+        <div class="bg-white p-8 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <h2 class="text-2xl font-bold mb-2">Review & Correct Mappings</h2>
+            <p class="text-gray-600 mb-6">Discrepancies were found. Please review and correct them before applying the mapping.</p>
+            
+            <div class="overflow-y-auto flex-grow pr-4 space-y-6">
+                <div id="missing-from-map-section">
+                    <h3 class="text-lg font-semibold text-red-600 mb-2">App Categories Not Found in Mapping File</h3>
+                    <p class="text-sm text-gray-500 mb-4">These categories exist in your app but have no corresponding `old` entry in the mapping file. Please map them to a new category.</p>
+                    <div id="missing-from-map-container" class="space-y-2"></div>
+                </div>
+
+                <div id="unmatched-in-app-section">
+                    <h3 class="text-lg font-semibold text-yellow-600 mb-2">Mapping Rules Not Found in App</h3>
+                    <p class="text-sm text-gray-500 mb-4">These `old` entries from your mapping file do not match any category currently in your app. You can discard them.</p>
+                    <div id="unmatched-in-app-container" class="space-y-2"></div>
+                </div>
+            </div>
+
+            <div class="mt-8 flex justify-end space-x-4 border-t pt-6">
+                <button id="cancel-validation-btn" class="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button id="process-corrections-btn" class="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">Apply Corrections & Import</button>
+            </div>
+        </div>
+    </div>
+
+
     <script>
         // --- Global State ---
         let transactionsDB = [];
@@ -552,6 +579,7 @@ Ensure the entire output is a single, valid JSON object.</textarea>
         let rulesDB = [];
         let existingTransactionKeys = new Set();
         let importContext = { fileContent: null, pausedMapping: null };
+        let correctedMappingContext = null; // For the validation modal
         let isReviewMode = false;
         let lastReportData = { headers: [], rows: [] };
         let monthlySpendingChart = null;
@@ -643,6 +671,10 @@ Ensure the entire output is a single, valid JSON object.</textarea>
         const ruleFilterCategoryEl = document.getElementById('rule-filter-category');
         const ruleFilterSubCategoryEl = document.getElementById('rule-filter-subcategory');
         const ruleFilterResetBtn = document.getElementById('rule-filter-reset');
+        // Validation Modal Elements
+        const validationModal = document.getElementById('validation-modal');
+        const cancelValidationBtn = document.getElementById('cancel-validation-btn');
+        const processCorrectionsBtn = document.getElementById('process-corrections-btn');
 
         // --- Data Persistence ---
         function saveDataToLocal() {
@@ -855,6 +887,13 @@ Ensure the entire output is a single, valid JSON object.</textarea>
             populateFilterDropdowns('all', ruleFilterIds);
             renderRulesTable();
         });
+        
+        // Validation Modal Listeners
+        cancelValidationBtn.addEventListener('click', () => {
+            validationModal.classList.add('hidden');
+            correctedMappingContext = null;
+        });
+        processCorrectionsBtn.addEventListener('click', processCorrectionsAndContinueImport);
 
 
         // --- Core Application Logic ---
@@ -1801,7 +1840,7 @@ Ensure the entire output is a single, valid JSON object.</textarea>
             populateFilterDropdowns('all', {type: 'report-filter-type', cat: 'report-filter-category', sub: 'report-filter-subcategory'});
             // For Dashboard Page Filters
             populateFilterDropdowns('all', {type: 'dashboard-filter-type', cat: 'dashboard-filter-category', sub: 'dashboard-filter-subcategory'});
-            // For Rules Page Filters (This is the new addition)
+            // For Rules Page Filters
             populateFilterDropdowns('all', {type: 'rule-filter-type', cat: 'rule-filter-category', sub: 'rule-filter-subcategory'});
         }
 
@@ -2371,95 +2410,24 @@ Ensure the entire output is a single, valid JSON object.</textarea>
                         setCategoryStatus('Invalid mapping JSON: missing mapping array.', 'red');
                         return;
                     }
-                    // 1. Update transactions
-                    transactionsDB.forEach(tx => {
-                        const match = mappingObj.mapping.find(m =>
-                            m.old.type === tx.type &&
-                            m.old.category === tx.category &&
-                            (m.old.subCategory || '') === (tx.subCategory || '')
-                        );
-                        if (match) {
-                            tx.type = match.new.type;
-                            tx.category = match.new.category;
-                            tx.subCategory = match.new.subCategory || '';
-                        }
+                    
+                    // --- PRE-FLIGHT CHECK ---
+                    const catToString = (cat) => `${cat.type || ''}|${cat.category || ''}|${cat.subCategory || ''}`;
+                    
+                    const appCats = new Set();
+                    [...transactionsDB, ...rulesDB].forEach(item => {
+                        appCats.add(catToString(item));
                     });
-                    // 2. Update rules: update if mapping exists, else log warning
-                    let unmappedRules = [];
-                    rulesDB.forEach(rule => {
-                        const match = mappingObj.mapping.find(m =>
-                            m.old.type === rule.type &&
-                            m.old.category === rule.category &&
-                            (m.old.subCategory || '') === (rule.subCategory || '')
-                        );
-                        if (match) {
-                            rule.type = match.new.type;
-                            rule.category = match.new.category;
-                            rule.subCategory = match.new.subCategory || '';
-                        } else {
-                            unmappedRules.push({
-                                keyword: rule.keyword,
-                                type: rule.type,
-                                category: rule.category,
-                                subCategory: rule.subCategory || ''
-                            });
-                        }
-                    });
-                    // 3. Build new categoryHierarchy from mapping
-                    const newHierarchy = {};
-                    mappingObj.mapping.forEach(m => {
-                        const { type, category, subCategory } = m.new;
-                        if (!newHierarchy[type]) newHierarchy[type] = {};
-                        if (!newHierarchy[type][category]) newHierarchy[type][category] = [];
-                        if (subCategory && !newHierarchy[type][category].includes(subCategory)) {
-                            newHierarchy[type][category].push(subCategory);
-                        }
-                    });
-                    categoryHierarchy = newHierarchy;
-                    // 4. Re-apply ALL rules to ALL transactions to ensure proper categorization
-                    let reCategorizedCount = 0;
-                    let improvedCount = 0;
-                    transactionsDB.forEach(tx => {
-                        const originalType = tx.type;
-                        const originalCategory = tx.category;
-                        const originalSubCategory = tx.subCategory;
-                        // Find the best matching rule (most specific/longest keyword)
-                        let bestRule = null;
-                        let bestMatchLength = 0;
-                        for (const rule of rulesDB) {
-                            if (tx.description.toLowerCase().includes(rule.keyword.toLowerCase())) {
-                                if (rule.keyword.length > bestMatchLength) {
-                                    bestRule = rule;
-                                    bestMatchLength = rule.keyword.length;
-                                }
-                            }
-                        }
-                        // Apply the best matching rule if found (always apply if a rule matches)
-                        if (bestRule) {
-                            tx.type = bestRule.type;
-                            tx.category = bestRule.category;
-                            tx.subCategory = bestRule.subCategory || '';
-                            // Check if this improved the categorization
-                            const wasUncategorized = originalType === 'Uncategorized' || originalCategory === 'Uncategorized' || !originalType || !originalCategory;
-                            if (wasUncategorized && tx.type !== 'Uncategorized') {
-                                improvedCount++;
-                            }
-                        }
-                        // Check if categorization changed
-                        if (originalType !== tx.type || originalCategory !== tx.category || originalSubCategory !== tx.subCategory) {
-                            reCategorizedCount++;
-                        }
-                    });
-                    saveDataToLocal();
-                    populateAllDropdowns();
-                    renderCategories();
-                    let statusMsg = 'Category mapping applied successfully!';
-                    if (reCategorizedCount > 0) statusMsg += ` Updated ${reCategorizedCount} transactions.`;
-                    if (improvedCount > 0) statusMsg += ` Improved categorization for ${improvedCount} transactions.`;
-                    if (unmappedRules.length > 0) statusMsg += ` ${unmappedRules.length} rules could not be mapped and still use old categories.`;
-                    setCategoryStatus(statusMsg, unmappedRules.length > 0 ? 'yellow' : 'green');
-                    if (unmappedRules.length > 0) {
-                        console.warn('Unmapped rules after category mapping import:', unmappedRules);
+
+                    const oldMapCats = new Set(mappingObj.mapping.map(m => catToString(m.old)));
+
+                    const missingFromMap = [...appCats].filter(cat => !oldMapCats.has(cat));
+                    const unmatchedInApp = [...oldMapCats].filter(cat => !appCats.has(cat));
+                    
+                    if (missingFromMap.length > 0 || unmatchedInApp.length > 0) {
+                        showValidationModal(missingFromMap, unmatchedInApp, mappingObj);
+                    } else {
+                        applyCategoryMapping(mappingObj.mapping);
                     }
                 } catch (err) {
                     setCategoryStatus('Error parsing mapping JSON. See console.', 'red');
@@ -2469,6 +2437,166 @@ Ensure the entire output is a single, valid JSON object.</textarea>
             reader.readAsText(file);
             event.target.value = null;
         }
+
+        function showValidationModal(missingFromMap, unmatchedInApp, mappingObj) {
+            correctedMappingContext = mappingObj;
+            const missingContainer = document.getElementById('missing-from-map-container');
+            const unmatchedContainer = document.getElementById('unmatched-in-app-container');
+            const newCatOptions = [...new Set(mappingObj.mapping.map(m => catToString(m.new)))]
+                .sort()
+                .map(catStr => {
+                    const [type, cat, sub] = catStr.split('|');
+                    const label = `${type} > ${cat}` + (sub ? ` > ${sub}` : '');
+                    return `<option value="${catStr}">${label}</option>`;
+                }).join('');
+
+            if (missingFromMap.length > 0) {
+                document.getElementById('missing-from-map-section').classList.remove('hidden');
+                missingContainer.innerHTML = missingFromMap.map((catStr, index) => {
+                    const [type, cat, sub] = catStr.split('|');
+                    const label = `${type} > ${cat}` + (sub ? ` > ${sub}` : '');
+                    return `
+                        <div class="grid grid-cols-2 gap-4 items-center border-b pb-2">
+                            <span class="font-mono text-xs text-gray-700" data-original-cat="${catStr}">${label}</span>
+                            <select id="missing-map-${index}" class="category-select">${newCatOptions}</select>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                 document.getElementById('missing-from-map-section').classList.add('hidden');
+            }
+
+            if (unmatchedInApp.length > 0) {
+                document.getElementById('unmatched-in-app-section').classList.remove('hidden');
+                unmatchedContainer.innerHTML = unmatchedInApp.map((catStr, index) => {
+                     const [type, cat, sub] = catStr.split('|');
+                    const label = `${type} > ${cat}` + (sub ? ` > ${sub}` : '');
+                    return `
+                        <div class="flex justify-between items-center border-b pb-2">
+                            <span class="font-mono text-xs text-gray-500" data-unmatched-cat="${catStr}">${label}</span>
+                            <div>
+                               <input type="checkbox" id="unmatched-discard-${index}" class="h-4 w-4 rounded border-gray-300 text-red-600 focus:ring-red-500">
+                               <label for="unmatched-discard-${index}" class="ml-2 text-sm text-gray-700">Discard this rule</label>
+                           </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                document.getElementById('unmatched-in-app-section').classList.add('hidden');
+            }
+            
+            validationModal.classList.remove('hidden');
+        }
+
+        function processCorrectionsAndContinueImport() {
+            let mappingObj = correctedMappingContext;
+            if (!mappingObj) return;
+
+            // Process missing categories that user has now mapped
+            const missingRows = document.querySelectorAll('[data-original-cat]');
+            missingRows.forEach((row, index) => {
+                const originalCatStr = row.dataset.originalCat;
+                const newCatStr = document.getElementById(`missing-map-${index}`).value;
+                
+                const [oldType, oldCat, oldSub] = originalCatStr.split('|');
+                const [newType, newCat, newSub] = newCatStr.split('|');
+
+                mappingObj.mapping.push({
+                    old: { type: oldType, category: oldCat, subCategory: oldSub },
+                    new: { type: newType, category: newCat, subCategory: newSub }
+                });
+            });
+
+            // Process unmatched mappings that user wants to discard
+            const unmatchedRows = document.querySelectorAll('[data-unmatched-cat]');
+            const catsToDiscard = new Set();
+            unmatchedRows.forEach((row, index) => {
+                if(document.getElementById(`unmatched-discard-${index}`).checked) {
+                    catsToDiscard.add(row.dataset.unmatchedCat);
+                }
+            });
+
+            if (catsToDiscard.size > 0) {
+                mappingObj.mapping = mappingObj.mapping.filter(m => {
+                    const catStr = `${m.old.type}|${m.old.category}|${m.old.subCategory || ''}`;
+                    return !catsToDiscard.has(catStr);
+                });
+            }
+            
+            validationModal.classList.add('hidden');
+            applyCategoryMapping(mappingObj.mapping);
+            correctedMappingContext = null;
+        }
+
+        function applyCategoryMapping(mapping) {
+            // 1. Update transactions
+            transactionsDB.forEach(tx => {
+                const match = mapping.find(m =>
+                    m.old.type === tx.type &&
+                    m.old.category === tx.category &&
+                    (m.old.subCategory || '') === (tx.subCategory || '')
+                );
+                if (match) {
+                    tx.type = match.new.type;
+                    tx.category = match.new.category;
+                    tx.subCategory = match.new.subCategory || '';
+                }
+            });
+            // 2. Update rules
+            rulesDB.forEach(rule => {
+                const match = mapping.find(m =>
+                    m.old.type === rule.type &&
+                    m.old.category === rule.category &&
+                    (m.old.subCategory || '') === (rule.subCategory || '')
+                );
+                if (match) {
+                    rule.type = match.new.type;
+                    rule.category = match.new.category;
+                    rule.subCategory = match.new.subCategory || '';
+                }
+            });
+            // 3. Build new categoryHierarchy from mapping
+            const newHierarchy = {};
+            mapping.forEach(m => {
+                const { type, category, subCategory } = m.new;
+                if (!newHierarchy[type]) newHierarchy[type] = {};
+                if (!newHierarchy[type][category]) newHierarchy[type][category] = [];
+                if (subCategory && !newHierarchy[type][category].includes(subCategory)) {
+                    newHierarchy[type][category].push(subCategory);
+                }
+            });
+            categoryHierarchy = newHierarchy;
+
+            // 4. Final step: Re-apply ALL rules to ALL transactions for consistency
+            let reCategorizedCount = 0;
+            transactionsDB.forEach(tx => {
+                let bestRule = null;
+                let bestMatchLength = 0;
+                for (const rule of rulesDB) {
+                    if (tx.description.toLowerCase().includes(rule.keyword.toLowerCase())) {
+                        if (rule.keyword.length > bestMatchLength) {
+                            bestRule = rule;
+                            bestMatchLength = rule.keyword.length;
+                        }
+                    }
+                }
+                if (bestRule) {
+                    if (tx.type !== bestRule.type || tx.category !== bestRule.category || tx.subCategory !== (bestRule.subCategory || '')) {
+                       reCategorizedCount++;
+                    }
+                    tx.type = bestRule.type;
+                    tx.category = bestRule.category;
+                    tx.subCategory = bestRule.subCategory || '';
+                }
+            });
+            
+            saveDataToLocal();
+            populateAllDropdowns();
+            renderAll();
+            let statusMsg = `Category mapping applied successfully! ${reCategorizedCount} transactions were updated by existing rules.`;
+            setCategoryStatus(statusMsg, 'green');
+        }
+
 
         // Add this function to handle editing rules
         function handleEditRule(index) {
